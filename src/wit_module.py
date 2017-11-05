@@ -38,10 +38,12 @@ class CallWit(object):
         self.client = Wit(access_token=self.WIT_TOKEN)
 
         self.replies = {}
+        self.context_dict = {}
 
         self.replies['default'] = ["Sorry mate ! I didn't get what you said..."]
-        self.replies['welcome'] = ["How can you help you today ? You can ask me about `Weather`, `Time` at a place and " \
-                           "I can also do some currency conversions !! "]
+        self.replies['welcome'] = ["How can you help you today ? You can ask me anything related to `Sleep`, `Dozee App`"
+                                   " & `Dozee device`, or we could just do some chit chatting here !!! "]
+        self.replies['great'] = ['Great !! Glad I could help !!!']
 
     def handle_message(self, user_query, user, channel):
         wit_response = self.client.message(msg=user_query)
@@ -54,6 +56,7 @@ class CallWit(object):
 
         greetings = self.first_entity_value(entities, 'greetings')
         bye = self.first_entity_value(entities, 'bye')
+        user_reply = self.first_entity_value(entities, 'replies')
         intent = self.first_entity_value(entities=entities, entity='intent')
         logging.info("Entities obtained : {}".format(intent, greetings, bye))
 
@@ -88,13 +91,36 @@ class CallWit(object):
             self.send_message(reply_list=self.replies['bye'], channel=channel, user_mention=user_mention)
 
         elif intent == 'sleepQuery':
-            self.say_sleep()
-            issue_type = self.sleepQuery(wit_response)
+            self.context_dict[intent] = True
+            issue_type = self.sleepQuery(wit_response, intent, user_mention, channel)
 
-            if issue_type:
-                self.send_message(reply_list=self.replies[issue_type], user_mention=user_mention, channel=channel)
-            else:
-                self.send_message(reply_list=self.replies[intent], user_mention=user_mention, channel=channel)
+        elif intent == 'appQuery':
+            self.context_dict[intent] = True
+            self.appQuery(wit_response, intent, user_mention, channel)
+
+        elif intent == 'deviceQuery':
+            self.context_dict[intent] = True
+            self.deviceQuery(wit_response, intent, user_mention, channel)
+
+        elif user_reply == 'neg':
+
+            contexts = self.context_dict.keys()[self.context_dict.values().index(True)]
+            print contexts
+            print self.context_dict
+
+            if 'sleepQuery' in contexts:
+                if self.context_dict['snore'] == True:
+                    issue_type = 'snore'
+                    self.send_message(reply_list=self.replies[issue_type + '-' + user_reply], user_mention=user_mention,
+                                      channel=channel)
+
+            elif 'appQuery' in contexts:
+                if self.context_dict['crash'] == True:
+                    issue_type = 'crash'
+                    self.send_message(reply_list=self.replies[issue_type + '-' + user_reply], user_mention=user_mention,
+                                      channel=channel)
+        elif user_reply == 'pos':
+            self.send_message(reply_list=self.replies['great'], user_mention=user_mention, channel=channel)
 
         else:
             self.send_message(reply_list=self.replies['default'], channel=channel, user_mention=user_mention)
@@ -102,27 +128,58 @@ class CallWit(object):
     def send_message(self, reply_list, user_mention, channel):
 
         response_template = random.choice(reply_list).format(mention=user_mention)
-        print response_template
+        # print response_template
         # response_template.format(mention=user_mention)
         self.bot_slack_client.api_call('chat.postMessage', channel=channel,
                               text=response_template, as_user=True)
 
     # Sleep Assistance service
-    def sleepQuery(self, response):
-        issue_list = ['snoring', 'insomnia', 'drowsy']
+    def sleepQuery(self, response, intent, user_mention, channel):
+        # issue_list = ['snoring', 'insomnia', 'drowsy']
+        self.say_sleep()
 
         entities = response['entities']
         issue_type = self.first_entity_value(entities, 'issue_type')
+        user_reply = self.first_entity_value(entities, 'replies')
+
+        if issue_type:
+            self.context_dict[issue_type] = True
+            self.send_message(reply_list=self.replies[issue_type], user_mention=user_mention, channel=channel)
+
+        else:
+            self.send_message(reply_list=self.replies[intent], user_mention=user_mention, channel=channel)
 
         return issue_type
 
-    def deviceQuery(self):
-        return
+    def deviceQuery(self, response, intent, user_mention, channel):
 
-    def appQuery(self):
-        return
+        self.say_device()
+        entities = response['entities']
+        issue_type = self.first_entity_value(entities, 'issue_type')
 
-    def miscQuery(self):
+        if issue_type:
+            self.context_dict[issue_type] = True
+            self.send_message(reply_list=self.replies[issue_type], user_mention=user_mention, channel=channel)
+        else:
+            self.send_message(reply_list=self.replies[intent], user_mention=user_mention, channel=channel)
+
+        return issue_type
+
+    def appQuery(self, response, intent, user_mention, channel):
+
+        self.say_app()
+        entities = response['entities']
+        issue_type = self.first_entity_value(entities, 'issue_type')
+
+        if issue_type:
+            self.context_dict[issue_type] = True
+            self.send_message(reply_list=self.replies[issue_type], user_mention=user_mention, channel=channel)
+        else:
+            self.send_message(reply_list=self.replies[intent], user_mention=user_mention, channel=channel)
+
+        return issue_type
+
+    def miscQuery(self, response):
         return
 
     # Wit utility functions
@@ -349,14 +406,56 @@ class CallWit(object):
         return
 
     def say_sleep(self):
-        """Say Goodbye to a user"""
+        """Sleep replies"""
         self.replies['sleepQuery'] = ['Sure !! How can I help you ?',
                                            'Hey {mention}, may I know your query about sleep ?',
                                            ]
-        self.replies['snoring'] = [
-            'To help reduce snoring, you could possibly try sleeping on your sides ...',
+        self.replies['snore'] = [
+            'To help reduce snoring, you could possibly try sleeping on your sides ...Does it help ?',
             'I have couple of links about snoring and sleep-apnea. It might help you.',
-            'I am no doctor but I can give you few suggestions. Have you checked if your nasal passage is clear ? '
+            'I am no doctor but I can give you few suggestions. Try not to sleep on your back. Does it help ?'
+        ]
+
+        self.replies['snore-neg'] = [
+            'Alright ... Sometimes other health factors like cold could cause snoring. Is that the case ?',
+            'Please wait. I have notified about your problem to our sleep expert. He will get in touch with you soon.'
+        ]
+
+        return
+
+    def say_app(self):
+        """App replies"""
+        self.replies['appQuery'] = ['Sure !! How can I help you ?',
+                                           'Hey {mention}, may I know your query about our app ?',
+                                           ]
+        self.replies['crash'] = [
+            'Alright ! try closing the app and restarting it. Does it work now ?',
+            'Let me help you ... Try uninstalling and reinstalling the app. Does it help?',
+            'I am no app developer but I can give you few suggestions. Try signing out and sign back in and see ! Does it '
+            'solve the problem ? '
+        ]
+
+        self.replies['pair'] = [
+            'Have you checked if your device is fully charged ?',
+            'Alright {mention} ! Make sure that your mobile data is off ...',
+            'I am no hardware engineer but I can give you few suggestions. '
+            'Have you checked if the device is paired to other id ?'
+        ]
+
+        self.replies['crash-neg'] = [
+            'Try clearing the cache memory of app and restart the app again. Does it work now ?',
+            'I will connect you with your developer. He will help you fix this issue...'
+        ]
+        return
+
+    def say_device(self):
+        """Device replies"""
+        self.replies['deviceQuery'] = ['Sure !! How can I help you ?',
+                                           'Hey {mention}, may I know your query about the device?',
+                                           ]
+        self.replies['device'] = [
+            '{mention}, did you try charging it atleast 80% and see ?',
+            'Have you checked if the device is placed in right position ?'
         ]
 
         return
